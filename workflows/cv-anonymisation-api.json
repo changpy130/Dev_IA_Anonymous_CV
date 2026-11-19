@@ -1,0 +1,876 @@
+{
+  "name": "CV anonymisation API",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "CV",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        0
+      ],
+      "id": "29a7a9fc-b4c7-4e42-881c-f66c5f3e71c1",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        272
+      ],
+      "id": "da3c0167-9783-407d-beee-323646b4f1d9",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "3oYddxqaNRC7a0Gv",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "7e1e6547-6fc8-445f-bcd0-9298a24b60dd",
+              "leftValue": "={{ $binary.CV.fileExtension }}",
+              "rightValue": "docx",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "d69ecf4d-30d3-42d0-a121-fb634e01db8c",
+      "name": "IF is it .docx?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/libreoffice/convert",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "CV"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "CV"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        688,
+        -160
+      ],
+      "id": "629214f3-c7b9-452b-85e9-36a097334e28",
+      "name": "HTTP Request (Gotenberg: docx → PDF)"
+    },
+    {
+      "parameters": {
+        "errorMessage": "CV illisible : PDF scanné ou vide"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        -112
+      ],
+      "id": "0e613a03-7d5a-42a5-85f7-e2d63ebc4da2",
+      "name": "Stop and Error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "5e354567-1b97-44c5-a753-af6dcb2f324c",
+              "leftValue": "={{ ($json.text || '').trim().length }}",
+              "rightValue": 100,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1152,
+        0
+      ],
+      "id": "3258bc86-e3a8-4c8f-a5c4-63b55149a446",
+      "name": "IF is the file empty?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst raw = item.text ?? item.output;\n\nif (typeof raw !== 'string') {\n  throw new Error('AI output not found: expected \"text\" or \"output\". Got keys: ' + Object.keys(item).join(', '));\n}\n\nconst clean = raw.replace(/^```(?:json)?\\s*|\\s*```$/g, '').trim();\nreturn [{ json: JSON.parse(clean) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        16
+      ],
+      "id": "baa24604-2b16-41c0-9725-9c71371ccb32",
+      "name": "Parse JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst year = s => (String(s).match(/\\d{4}/) || [s])[0];\n\nreturn [{ json: {\n  titre: d.titre,\n  annees_experience: d.annees_experience,\n  competences: d.competences,\n  experiences: d.experiences.map(e => ({\n    secteur: e.secteur, poste: e.poste,\n    debut: year(e.debut), fin: year(e.fin),\n    missions: e.missions, environnement: e.environnement\n  })),\n  formations: d.formations.map(f => ({ diplome: f.diplome, annee: f.annee })),\n  langues: d.langues,\n  certifications: d.certifications\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        16
+      ],
+      "id": "0093aa3e-8785-416a-964e-cfdfcbf7babf",
+      "name": "Prepare payload"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        2192,
+        224
+      ],
+      "id": "ee9c1876-0c43-4455-99fe-3f9df2fd97c0",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "3oYddxqaNRC7a0Gv",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You extract data from a CV. Return ONLY valid JSON, with no comments\nand no markdown. Use null when a field is missing. Do not invent anything,\nexcept \"secteur\" and \"annees_experience\" (see rules).\nKeep the original language of the CV.\n\nRules:\n- \"secteur\": the employer's general business sector in one or two words\n  (e.g. \"Banque\", \"Industrie\", \"Mutuelle / santé\"). Never the company name.\n- \"environnement\": tools and technologies used in that experience.\n- \"annees_experience\": total years of work experience, as a number.\n- \"competences\": only hard skills: tools, programming languages, technologies, methods and domain knowledge (e.g. \"Power BI\", \"SQL\", \"Agile Scrum\", \"gouvernance des données\"). Keep level indications, e.g. 'SQL (avancé)'. Exclude soft skills (e.g. \"rigueur\", \"esprit de synthèse\").\n- \"langues\": keep the level as written, e.g. ‘Anglais (courant)’.\n- \"experiences\": if the most recent experience indicates no finished date, assume it as still working, e.g. '2025 - aujourd'hui'.\n- \"liens\": LinkedIn, GitHub, portfolio URLs as written.\n\nSchema:\n{\n  \"nom\": \"\", \"prenom\": \"\", \"email\": \"\", \"telephone\": \"\",\n  \"ville\": \"\", \"age\": null,\n  \"titre\": \"\",\n  \"competences\": [],\n  \"experiences\": [\n    {\"employeur\": \"\", \"secteur\": \"\", \"poste\": \"\", \"debut\": \"\", \"fin\": \"\",\n     \"missions\": [], \"environnement\": []}\n  ],\n  \"formations\": [{\"ecole\": \"\", \"diplome\": \"\", \"annee\": \"\"}],\n  \"langues\": [],\n  \"certifications\": [{\"nom\": \"\", \"annee\": \"\"}],\n  \"loisirs\": [],\n  \"annees_experience\": null,\n  \"adresse\": \"\",\n  \"liens\": []\n}\n\nCV:\n{{ $json.text }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1376,
+        80
+      ],
+      "id": "cb6511b4-a7b2-4ac4-9c82-42df22b06b88",
+      "name": "Basic LLM Chain (find relevant fields)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You write an anonymous consultant profile for a client. Return ONLY valid JSON. Use ONLY facts present in the data below. Never add a certification, score, level, number or skill that is not listed. No promotional wording\n(e.g. \"reconnue\", \"garantissant\", \"expert\"). If unsure, leave it out.\n\nTasks:\n1. \"accroche\": 3 sentences in French, third person. Always use \"Ce profil\" as the subject; never \"il\", \"elle\", \"il/elle\" or any gendered word. Use the sectors, technologies and concrete figures from the CV. No name, no company, no school.\n2. \"missions\": for each experience (same order), rewrite the bullet points keeping ALL facts, numbers and technology names (Power BI, Python, SQL...). Remove only proper names of companies, clients or people, replacing them with a generic term (e.g. \"la banque\", \"un client industriel\").\n\nSchema:\n{\"accroche\": \"\", \"missions\": [[\"bullet\", \"bullet\"], [\"bullet\"]]}\n\nData:\n{{ JSON.stringify($json) }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2192,
+        16
+      ],
+      "id": "2ae77ce0-2fe7-47ba-8a09-5c98c743e0d3",
+      "name": "Basic LLM Chain (build anonymous CV fields)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst raw = item.text ?? item.output;\n\nif (typeof raw !== 'string') {\n  throw new Error('AI output not found: expected \"text\" or \"output\". Got keys: ' + Object.keys(item).join(', '));\n}\n\nconst clean = raw.replace(/^```(?:json)?\\s*|\\s*```$/g, '').trim();\nreturn [{ json: JSON.parse(clean) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        16
+      ],
+      "id": "21621c54-0a73-4b67-91d0-a1ceab79f536",
+      "name": "Parse AI2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $input.first().json;\nconst AGENCY = 'Fil Rouge Consulting';\n\nconst esc = s => String(s ?? '').replace(/[&<>\"']/g,\n  m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[m]));\nconst period = e => e.debut === e.fin ? e.debut : `${e.debut} – ${e.fin}`;\n\nconst html = `<!DOCTYPE html>\n<html lang=\"fr\"><head><meta charset=\"utf-8\">\n<style>\n  @page { size: A4; margin: 0; }\n  body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #1a2233; font-size: 12px; }\n  header { background: #a3123a; color: #fff; padding: 28px 40px; display: flex; justify-content: space-between; }\n  header .agency { font-size: 20px; font-weight: bold; }\n  header .sub { font-size: 9px; letter-spacing: 2px; margin-top: 6px; }\n  header .ref { text-align: right; }\n  main { padding: 24px 40px; }\n  h1 { font-size: 22px; margin: 0 0 4px; }\n  .years { color: #a3123a; font-weight: bold; margin-bottom: 14px; }\n  h2 { color: #a3123a; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;\n       border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 18px 0 8px; }\n  .summary { background: #fdeeee; border-left: 3px solid #a3123a; padding: 10px 14px; line-height: 1.5; }\n  .tag { display: inline-block; border: 1px solid #c8d0dc; background: #eef2f8;\n         border-radius: 12px; padding: 3px 10px; margin: 0 4px 4px 0; }\n  .row { display: flex; justify-content: space-between; margin-top: 10px; }\n  .muted { color: #666; }\n  ul { margin: 4px 0; padding-left: 18px; }\n  .env { font-size: 11px; }\n  .cols { display: flex; gap: 40px; } .cols > div { flex: 1; }\n  footer { text-align: center; font-size: 9px; color: #777; border-top: 1px solid #ddd;\n           margin: 20px 40px 0; padding-top: 8px; }\n</style></head><body>\n<header>\n  <div><div class=\"agency\">${esc(AGENCY)}</div><div class=\"sub\">DOSSIER DE COMPÉTENCES</div></div>\n  <div class=\"ref\"><div>Réf. consultant</div><div><b>${esc(c.code)}</b></div><div>${esc(c.date)}</div></div>\n</header>\n<main>\n  <h1>${esc(c.titre)}</h1>\n  <div class=\"years\">${Math.floor(c.annees_experience)} ans d'expérience</div>\n\n  <h2>Synthèse du profil</h2>\n  <div class=\"summary\">${esc(c.accroche)}</div>\n\n  <h2>Compétences clés</h2>\n  <div>${c.competences.map(s => `<span class=\"tag\">${esc(s)}</span>`).join('')}</div>\n\n  <h2>Expériences professionnelles</h2>\n  ${c.experiences.map(e => `\n    <div class=\"row\"><div><b>${esc(e.poste)}</b> — <span class=\"muted\">${esc(e.secteur)}</span></div>\n      <div class=\"muted\">${esc(period(e))}</div></div>\n    <ul>${e.missions.map(m => `<li>${esc(m)}</li>`).join('')}</ul>\n    <div class=\"env\"><b>Environnement :</b> ${esc(e.environnement.join(', '))}</div>`).join('')}\n\n  <h2>Formation</h2>\n  ${c.formations.map(f => `<div><b>${esc(f.annee)}</b> — ${esc(f.diplome)} <span class=\"muted\">(${esc(f.type)})</span></div>`).join('')}\n\n  <div class=\"cols\">\n    <div><h2>Langues</h2><ul>${c.langues.map(l => `<li>${esc(l)}</li>`).join('')}</ul></div>\n    <div><h2>Certifications</h2><ul>${c.certifications.map(x => `<li>${esc(x.nom)} — ${esc(x.annee)}</li>`).join('')}</ul></div>\n  </div>\n</main>\n<footer>Document confidentiel — CV anonymisé conformément au RGPD — ${esc(AGENCY)} · Réf. ${esc(c.code)}</footer>\n</body></html>`;\n\nreturn [{ json: { ...c, html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3024,
+        16
+      ],
+      "id": "a79e61d4-36f2-4917-9f97-d50bce8d68da",
+      "name": "Build HTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const full = $('Parse JSON').first().json;      // real data (never output)\nconst reduced = $('Prepare payload').first().json;\nconst ai = $('Parse AI2').first().json;\n\nif (ai.missions.length !== reduced.experiences.length) {\n  throw new Error('AI2 returned ' + ai.missions.length +\n    ' mission groups, expected ' + reduced.experiences.length);\n}\n\n// Consultant code: CONS- + 6 characters (no ambiguous 0/O/1/I)\nconst chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';\nconst rand = Array.from({ length: 6 },\n  () => chars[Math.floor(Math.random() * chars.length)]).join('');\n\n// School name -> generic type\nconst schoolType = name => {\n  if (/universit/i.test(name)) return 'Université';\n  if (/lyc[ée]e/i.test(name)) return 'Lycée';\n  if (/[ée]cole|institut|iut/i.test(name)) return 'École';\n  return 'Établissement';\n};\n\nreturn [{ json: {\n  code: 'CONS-' + rand,\n  date: new Date().toLocaleDateString('fr-FR'),\n  titre: reduced.titre,\n  annees_experience: reduced.annees_experience,\n  accroche: ai.accroche,\n  competences: reduced.competences,\n  experiences: reduced.experiences.map((e, i) => ({\n    secteur: e.secteur, poste: e.poste,\n    debut: e.debut, fin: e.fin,\n    missions: ai.missions[i],\n    environnement: e.environnement\n  })),\n  formations: full.formations.map(f => ({\n    type: schoolType(f.ecole), diplome: f.diplome, annee: f.annee\n  })),\n  langues: reduced.langues,\n  certifications: reduced.certifications\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        16
+      ],
+      "id": "a3b6c4b3-c69e-499f-b37e-40f77c09fe09",
+      "name": "Assemble CV"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "html",
+        "options": {
+          "fileName": "index.html"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.2,
+      "position": [
+        3472,
+        16
+      ],
+      "id": "8ea90fd9-481a-4453-b0e0-c405a8db8b51",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "printBackground",
+              "value": "true"
+            },
+            {
+              "name": "preferCssPageSize",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3696,
+        16
+      ],
+      "id": "b4d8fbea-a428-43d2-9d26-165ca87bcab1",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const full = $('Parse JSON').first().json;\nconst item = $input.first().json;\n\nconst norm = s => String(s ?? '').normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();\nconst digits = s => String(s ?? '').replace(/\\D/g, '');\nconst esc = s => String(s).replace(/[&<>\"']/g,\n  m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[m]));\nconst escRe = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst visible = h => norm(h.replace(/<[^>]*>/g, ' ')\n  .replace(/&#39;/g, \"'\").replace(/&amp;/g, '&'));\n\nconst secrets = [\n  ['nom', full.nom], ['prenom', full.prenom], ['email', full.email],\n  ['telephone', full.telephone], ['ville', full.ville], ['adresse', full.adresse],\n  ...(full.liens || []).map((l, i) => ['lien ' + (i + 1), l]),\n  ...full.experiences.map((e, i) => ['employeur ' + (i + 1), e.employeur]),\n  ...full.formations.map((f, i) => ['ecole ' + (i + 1), f.ecole]),\n].filter(([, v]) => norm(v).length >= 3);\n\nconst findLeaks = html => {\n  const text = visible(html);\n  return secrets.filter(([label, v]) => label === 'telephone'\n    ? digits(text).includes(digits(v))\n    : text.includes(norm(v)));\n};\n\n// 1. detect\nconst leaks = findLeaks(item.html);\n\n// 2. redact\nlet html = item.html;\nfor (const [, v] of leaks) {\n  for (const variant of [String(v), esc(v)]) {\n    html = html.replace(new RegExp(escRe(variant), 'gi'), '[masqué]');\n  }\n}\n\n// 3. verify: if anything survives, block\nconst remaining = findLeaks(html);\nif (remaining.length) {\n  throw new Error('RGPD: unfixable leak in: ' + remaining.map(([l]) => l).join(', '));\n}\n\nreturn [{ json: { ...item, html, alertes: leaks.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3248,
+        16
+      ],
+      "id": "479f3fa9-49a8-44d9-b1e9-b92bd63f319f",
+      "name": "Leak check"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst code = $('Assemble CV').first().json.code;\n\nitem.binary.pdf.fileName = `CV_anonymise_${code}.pdf`;\nreturn [item];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3920,
+        16
+      ],
+      "id": "11981609-0437-4cab-9947-e33fa0413e83",
+      "name": "Name PDF"
+    },
+    {
+      "parameters": {
+        "jsCode": "const full = $('Parse JSON').first().json;\nconst cv = $('Assemble CV').first().json;\nconst form = $('Webhook').first();   // your form node's name\n\nconst row = {\n  'Code consultant': cv.code,\n  'Date de traitement': cv.date,\n  'Prénom': full.prenom,\n  'Nom': full.nom,\n  'E-mail': full.email,\n  'Téléphone': full.telephone,\n  'Adresse': full.adresse ?? full.ville,\n  'Liens (LinkedIn, GitHub…)': (full.liens || []).join(', '),\n  'Poste': full.titre,\n  \"Années d'expérience\": Math.floor(cv.annees_experience),\n  'Compétences': (full.competences || []).join(', '),\n  'Lien CV anonymisé': 'http://localhost:5678/webhook/cv-anonyme?code=' + cv.code,\n  'Fichier source': form.binary.CV.fileName,\n  'Alertes RGPD rattrapées': $('Leak check').first().json.alertes,\n};\n\nreturn [{ json: row }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4368,
+        16
+      ],
+      "id": "ff6a7350-f5a8-4736-aa6b-5d526490b6ec",
+      "name": "Build register row"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1MF6znsZwNyImi2c_synZTTS7OibWPh9Hx1mckiXAIds",
+          "mode": "list",
+          "cachedResultName": "Registre CV",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1MF6znsZwNyImi2c_synZTTS7OibWPh9Hx1mckiXAIds/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1MF6znsZwNyImi2c_synZTTS7OibWPh9Hx1mckiXAIds/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Code consultant",
+              "displayName": "Code consultant",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date de traitement",
+              "displayName": "Date de traitement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Prénom",
+              "displayName": "Prénom",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nom",
+              "displayName": "Nom",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "E-mail",
+              "displayName": "E-mail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Téléphone",
+              "displayName": "Téléphone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Adresse",
+              "displayName": "Adresse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Liens (LinkedIn, GitHub…)",
+              "displayName": "Liens (LinkedIn, GitHub…)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Poste",
+              "displayName": "Poste",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Années d'expérience",
+              "displayName": "Années d'expérience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Compétences",
+              "displayName": "Compétences",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lien CV anonymisé",
+              "displayName": "Lien CV anonymisé",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fichier source",
+              "displayName": "Fichier source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Alertes RGPD rattrapées",
+              "displayName": "Alertes RGPD rattrapées",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4576,
+        16
+      ],
+      "id": "7a56730a-0ac9-4608-b6b6-be9a1e79f9a0",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1Py74ndcRn624hD9",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/files/{{ $('Assemble CV').first().json.code }}.pdf",
+        "dataPropertyName": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        4144,
+        16
+      ],
+      "id": "705679e5-e0c0-401d-956e-728246dd8a84",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cv-upload",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "1cb099d4-4cce-47d5-b252-6e9a02f14c1b",
+      "name": "Webhook",
+      "webhookId": "f9390c84-19c4-4950-8fa5-1c08d482f119",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4zQPZYWW3w8olB84",
+          "name": "Streamlit API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5008,
+        16
+      ],
+      "id": "a5593372-5e30-4f00-9237-1cccda666884",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const code = $('Assemble CV').first().json.code;\nreturn [{ json: {\n  code,\n  link: 'http://localhost:5678/webhook/cv-anonyme?code=' + code,\n  alertes: $('Leak check').first().json.alertes\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        16
+      ],
+      "id": "0f14b7ae-2c5e-42b9-96fc-c79629ec3a66",
+      "name": "Build response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "IF is the file empty?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain (find relevant fields)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF is it .docx?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request (Gotenberg: docx → PDF)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request (Gotenberg: docx → PDF)": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF is the file empty?": {
+      "main": [
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Basic LLM Chain (find relevant fields)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "Prepare payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare payload": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain (build anonymous CV fields)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain (build anonymous CV fields)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain (find relevant fields)": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain (build anonymous CV fields)": {
+      "main": [
+        [
+          {
+            "node": "Parse AI2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI2": {
+      "main": [
+        [
+          {
+            "node": "Assemble CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble CV": {
+      "main": [
+        [
+          {
+            "node": "Build HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML": {
+      "main": [
+        [
+          {
+            "node": "Leak check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leak check": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Name PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Name PDF": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build register row": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Build response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Build register row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "IF is it .docx?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2d1c3533-f835-4585-95c2-e8dee3d155f8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b0d67b22a3c0c01bad9ca68b03b65d0cf868f82b78caf980d984e534e165c541"
+  },
+  "nodeGroups": [],
+  "id": "S5NesCnmuVFjDSNV",
+  "tags": []
+}

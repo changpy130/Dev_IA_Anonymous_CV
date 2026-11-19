@@ -1,0 +1,110 @@
+{
+  "name": "CV download",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "cv-anonyme",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "40c29de0-187c-436d-98de-f770fb5e100a",
+      "name": "Webhook",
+      "webhookId": "7522f45c-c9b8-4496-904e-654529240826"
+    },
+    {
+      "parameters": {
+        "jsCode": "const code = $input.first().json.query.code || '';\nif (!/^CONS-[A-Z0-9]{6}$/.test(code)) {\n  throw new Error('Invalid code');\n}\nreturn [{ json: { path: `\\/files/${code}.pdf` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "0064643f-4b57-4cea-b484-6961c028d04e",
+      "name": "Code node"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.path }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "37e9c210-f9d2-44be-9d6b-ee42b8155199",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "382f6e50-f214-4409-9f85-afd003a17c17",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code node": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b91ff2f0-00df-4fb5-8fff-d4ba464df962",
+  "meta": {
+    "instanceId": "b0d67b22a3c0c01bad9ca68b03b65d0cf868f82b78caf980d984e534e165c541"
+  },
+  "nodeGroups": [],
+  "id": "PJzTWs5USRuz7gte",
+  "tags": []
+}
